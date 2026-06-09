@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>視覺化四角浮水印產生器 - 支援大小微調</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --success-color: #10b981;
+            --bg-color: #f8fafc;
+            --border-color: #cbd5e1;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            color: #334155;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        h1 { text-align: center; color: #1e293b; margin-bottom: 30px; }
+        
+        /* 嚴格符合：4 橫排、5 直行的控制面板網格 */
+        .control-grid {
+            display: grid;
+            grid-template-rows: repeat(4, auto); /* 4 橫排 */
+            gap: 20px;
+            margin-bottom: 30px;
+            background: #f1f5f9;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .control-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr); /* 5 直行 */
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .label-title {
+            grid-column: span 1;
+            font-weight: bold;
+            color: #1e293b;
+        }
+        .input-field {
+            grid-column: span 4;
+        }
+        .span-2 { grid-column: span 2; }
+
+        /* 橫排 2 專用的四角版型可視化區域 (佔4直行，內部平分) */
+        .layout-options-wrapper {
+            grid-column: span 4;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .layout-card {
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px;
+            text-align: center;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .layout-card:hover {
+            border-color: #93c5fd;
+        }
+        .layout-card.active {
+            border-color: var(--primary-color);
+            background-color: #eff6ff;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+        }
+        .layout-card canvas {
+            width: 100%;
+            height: auto;
+            background: #e2e8f0;
+            border-radius: 4px;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .layout-card span {
+            font-size: 13px;
+            font-weight: bold;
+            color: #475569;
+        }
+        .layout-card.active span {
+            color: var(--primary-color);
+        }
+
+        /* 橫排 4 專用的拉桿與數值顯示容器 (分配在網格中) */
+        .range-container {
+            grid-column: span 2;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .range-container input[type="range"] {
+            flex-grow: 1;
+            cursor: pointer;
+        }
+        .range-val {
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--primary-color);
+            min-width: 45px;
+        }
+
+        /* 表單元件基本樣式 */
+        input[type="file"], button {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 14px;
+            background: white;
+        }
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #1d4ed8; }
+        button:disabled { background-color: #94a3b8; cursor: not-allowed; }
+
+        /* 大圖預覽區域 */
+        .preview-area {
+            text-align: center;
+            margin-top: 20px;
+            border: 2px dashed var(--border-color);
+            padding: 20px;
+            border-radius: 8px;
+            min-height: 350px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+        }
+        #main-canvas {
+            max-width: 100%;
+            max-height: 600px;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            background: white;
+        }
+        .preview-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>📸 視覺化四角浮水印產生器 (72 DPI)</h1>
+    
+    <div class="control-grid">
+        <div class="control-row">
+            <div class="label-title">1. 主圖片</div>
+            <div class="input-field span-4">
+                <input type="file" id="upload-main" accept="image/*">
+            </div>
+        </div>
+
+        <div class="control-row">
+            <div class="label-title">2. 選擇版型</div>
+            <div class="layout-options-wrapper">
+                <div class="layout-card active" data-position="tl" id="card-tl">
+                    <canvas id="thumb-tl"></canvas>
+                    <span>1. 左上角</span>
+                </div>
+                <div class="layout-card" data-position="tr" id="card-tr">
+                    <canvas id="thumb-tr"></canvas>
+                    <span>2. 右上角</span>
+                </div>
+                <div class="layout-card" data-position="bl" id="card-bl">
+                    <canvas id="thumb-bl"></canvas>
+                    <span>3. 左下角</span>
+                </div>
+                <div class="layout-card" data-position="br" id="card-br">
+                    <canvas id="thumb-br"></canvas>
+                    <span>4. 右下角</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-row">
+            <div class="label-title">3. PNG水印</div>
+            <div class="input-field span-4">
+                <input type="file" id="upload-watermark" accept="image/png">
+            </div>
+        </div>
+
+        <div class="control-row">
+            <div class="label-title">4. 水印調整</div>
+            <div class="range-container">
+                <input type="range" id="watermark-size" min="3" max="30" value="8" step="1" disabled>
+                <span class="range-val" id="size-val">8%</span>
+            </div>
+            <div class="span-2">
+                <button id="btn-download" style="background-color: var(--success-color);" disabled>下載 72dpi JPG</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="preview-area">
+        <p id="preview-placeholder">請上傳「主圖片」與「PNG浮水印」，系統將自動生成四種方位預覽圖</p>
+        <div id="actual-preview" style="display: none; width: 100%;">
+            <div class="preview-title">最終輸出大圖預覽：</div>
+            <canvas id="main-canvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    const uploadMain = document.getElementById('upload-main');
+    const uploadWatermark = document.getElementById('upload-watermark');
+    const watermarkSizeInput = document.getElementById('watermark-size');
+    const sizeValDisplay = document.getElementById('size-val');
+    const btnDownload = document.getElementById('btn-download');
+    const mainCanvas = document.getElementById('main-canvas');
+    const mainCtx = mainCanvas.getContext('2d');
+    const placeholder = document.getElementById('preview-placeholder');
+    const actualPreview = document.getElementById('actual-preview');
+    const layoutCards = document.querySelectorAll('.layout-card');
+
+    let mainImage = null;
+    let watermarkImage = null;
+    let currentPosition = 'tl'; // 預設左上角
+
+    // 處理主圖片上傳 (優化為本地安全路徑處理，確保100%顯示)
+    uploadMain.addEventListener('change', function(e) {
+        if (e.target.files.length === 0) return;
+        loadImage(e.target.files[0], (img) => {
+            mainImage = img;
+            checkReadyState();
+        });
+    });
+
+    // 處理 PNG 浮水印上傳
+    uploadWatermark.addEventListener('change', function(e) {
+        if (e.target.files.length === 0) return;
+        loadImage(e.target.files[0], (img) => {
+            watermarkImage = img;
+            checkReadyState();
+        });
+    });
+
+    // 通用圖片載入器 (採用 URL.createObjectURL 避免瀏覽器沙盒不顯示問題)
+    function loadImage(file, callback) {
+        if (!file) return;
+        const img = new Image();
+        img.onload = () => {
+            callback(img);
+        };
+        img.src = URL.createObjectURL(file);
+    }
+
+    // 檢查兩張圖是否都備齊
+    function checkReadyState() {
+        if (mainImage && watermarkImage) {
+            placeholder.style.display = 'none';
+            actualPreview.style.display = 'block';
+            watermarkSizeInput.disabled = false;
+            btnDownload.disabled = false;
+            
+            // 渲染縮圖與大圖
+            generateThumbnails();
+            drawMain();
+        }
+    }
+
+    // 點擊版型卡片切換方位
+    layoutCards.forEach(card => {
+        card.addEventListener('click', function() {
+            if (!mainImage || !watermarkImage) return;
+            
+            layoutCards.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            
+            currentPosition = this.getAttribute('data-position');
+            drawMain();
+        });
+    });
+
+    // 監聽大小滑桿：拉動時即時連動大圖與縮圖
+    watermarkSizeInput.addEventListener('input', function() {
+        sizeValDisplay.textContent = this.value + '%';
+        if (mainImage && watermarkImage) {
+            drawMain();
+            generateThumbnails(); // 讓4張微型預覽圖也一起變大變小
+        }
+    });
+
+    btnDownload.addEventListener('click', downloadJPG);
+
+    // 核心邏輯 A：生成 4 個角落的迷你預覽圖
+    function generateThumbnails() {
+        const positions = ['tl', 'tr', 'bl', 'br'];
+        // 取得當前滑桿設定的百分比數值
+        const sizePercent = parseFloat(watermarkSizeInput.value) / 100;
+        
+        positions.forEach(pos => {
+            const thumbCanvas = document.getElementById(`thumb-${pos}`);
+            const tCtx = thumbCanvas.getContext('2d');
+            
+            // 設定固定縮圖比例，避免效能卡頓
+            thumbCanvas.width = 200;
+            thumbCanvas.height = (mainImage.height / mainImage.width) * 200;
+            
+            // 畫背景
+            tCtx.drawImage(mainImage, 0, 0, thumbCanvas.width, thumbCanvas.height);
+            
+            // 計算浮水印在縮圖上的比例 (縮圖上稍微增幅1.2倍方便人類肉眼辨識)
+            const wWidth = thumbCanvas.width * (sizePercent * 1.2); 
+            const scale = wWidth / watermarkImage.width;
+            const wHeight = watermarkImage.height * scale;
+            const pad = thumbCanvas.width * 0.05;
+            
+            // 根據方位編排座標
+            let x = pad, y = pad;
+            if (pos === 'tr') x = thumbCanvas.width - pad - wWidth;
+            if (pos === 'bl') y = thumbCanvas.height - pad - wHeight;
+            if (pos === 'br') {
+                x = thumbCanvas.width - pad - wWidth;
+                y = thumbCanvas.height - pad - wHeight;
+            }
+            
+            tCtx.drawImage(watermarkImage, x, y, wWidth, wHeight);
+        });
+    }
+
+    // 核心邏輯 B：繪製最終輸出的大圖
+    function drawMain() {
+        if (!mainImage || !watermarkImage) return;
+
+        mainCanvas.width = mainImage.width;
+        mainCanvas.height = mainImage.height;
+
+        // 畫主圖
+        mainCtx.drawImage(mainImage, 0, 0);
+
+        // 動態讀取滑桿百分比 (可微調範圍 3% ~ 30%)
+        const sizePercent = parseFloat(watermarkSizeInput.value) / 100;
+        const targetWidth = mainCanvas.width * sizePercent; 
+        const scale = targetWidth / watermarkImage.width;
+        const targetHeight = watermarkImage.height * scale;
+        
+        // 內縮邊距固定為主圖寬度的 3%
+        const padding = mainCanvas.width * 0.03;
+
+        let x = padding;
+        let y = padding;
+
+        // 根據目前選取的方位計算精確座標
+        if (currentPosition === 'tr') { 
+            x = mainCanvas.width - padding - targetWidth;
+        } else if (currentPosition === 'bl') { 
+            y = mainCanvas.height - padding - targetHeight;
+        } else if (currentPosition === 'br') { 
+            x = mainCanvas.width - padding - targetWidth;
+            y = mainCanvas.height - padding - targetHeight;
+        }
+
+        // 繪製 PNG 浮水印
+        mainCtx.drawImage(watermarkImage, x, y, targetWidth, targetHeight);
+    }
+
+    // 下載 72 DPI JPG 檔案
+    function downloadJPG() {
+        const dataURL = mainCanvas.toDataURL('image/jpeg', 0.9);
+        const link = document.createElement('a');
+        link.download = `watermark_${currentPosition}_${watermarkSizeInput.value}pct.jpg`;
+        link.href = dataURL;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+
+</body>
+</html>
